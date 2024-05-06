@@ -61,12 +61,16 @@ start_process (void *file_name_)
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
-  if_.cs = SEL_UCSEG;
+  if_.cs = SEL_UCSEG; // 코드 세그먼트 레지스터를 유저 코드 세그먼트로 설정
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
+  /*
+  인터럽트 프레임 구조체의 모든 변수들에 대하여 0으로 초기화.  
+  데이터 세그먼트 레지스터들을 모두 SEL_UDSEG로 설정 → 사용자모드에서 데이터에 접근하기 위한 메모리 영역
+  */
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
+  palloc_free_page (file_name); //그냥 파일 이름 저장을 위해서만 할당한 메모리이므로 해제
   if (!success) 
     thread_exit ();
 
@@ -77,7 +81,13 @@ start_process (void *file_name_)
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
+
+  // movl %0, %%esp 는 스택포인터를 if_ 구조체의 주소로 설정하는 명령. -> 스택포인터를 인터럽트 프레임만큼 증가시킨다. 
+  // 앞에서 스택포인터를 증가시켰다 = 인터럽트가 처리됐다. -> intr_exit로 jmp해서 인터럽트 종료하고 스레드 종료
+  // : : "g" (&if_) : "memory"  여기서 g는 if_ 구조체의 메모리 주소를 사용한다는 걸 가리키는 말. 
   NOT_REACHED ();
+  // 앞의 어셈블리 코드에서 intr_exit으로 점프해서 끝나기 때문에 이후의 코드를 실행할 수 없다는 걸 가리키는 말. 여기 이후에는 코드를 작성해도 반영 안됨.
+
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
