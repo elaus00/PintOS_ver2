@@ -30,7 +30,6 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
-  
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -41,11 +40,11 @@ process_execute (const char *file_name)
 
   /* Parse file_name for get file_name without arguments */
   char *saveptr;
-  file_name = strtok_r(file_name, " ", &saveptr);
+   char *program_name = strtok_r(fn_copy, " ", &saveptr);
 
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (program_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
