@@ -794,8 +794,10 @@ init_thread (struct thread *t, const char *name, int priority)
   /* Initialize for advanced scheduler */
   t->nice = 0;
   t->recent_cpu = 0;
-
   t->magic = THREAD_MAGIC;
+
+  /* Initialize for userprog */
+    
   list_push_back (&all_list, &t->allelem);
 }
 
@@ -908,7 +910,22 @@ allocate_tid (void)
 
   return tid;
 }
-
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+struct thread *
+thread_get_by_id (tid_t id)
+{
+  ASSERT (id != TID_ERROR);
+  struct list_elem *e;
+  
+  for (e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e))
+    {
+      struct thread *t = list_entry(e, struct thread, allelem);
+      if (t->tid == id && t->status != THREAD_DYING)
+        return t;
+    }
+  return NULL;
+}
