@@ -18,67 +18,12 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void argument_stack(const char **argv, int argc, void **esp);
 
-static void argument_stack(const char**argv,int argc, void **esp){
-  // char *argv_addr[32];
-  uint8_t size=0;
-  int i;
-  char *token;
-  char **argv_addr = calloc(argc, sizeof(char *));
-  for (i=argc-1; i>-1; i--){
-    int argument_length=strlen(argv[i])+1;
-    *esp -= argument_length;
-    memcpy(*esp, argv[i], argument_length);
-    size += argument_length;
-    argv_addr[i]= *esp;}
 
-    // if (size%4){
-    //   int j;
-    //   for(j=(4-(size%4));i>0;i--){
-    //     *esp--;
-    //     **(char **)esp=0;
-    //   }
-    // }
-      while((int)*esp%4!=0)
-  {
-    *esp-= 1;
-    memset(*esp, 0, 1);
-  }
-    
-
-    *esp-=4;
-    // **(char**)esp=0;
-     memset(*esp, 0, 4);
-
-    for (i = argc - 1; i>=0; i--) {
-		// *esp -= 4;
-		// memcpy(*esp, &argv_addr[i], strlen(&argv_addr[i]));
-    token = argv_addr[i];
-    *esp-= sizeof(char *);
-    memcpy(*esp, token, sizeof(char *));
-	}
-
-
-  // *esp-=4;
-  // *(int*)esp=argc;
-    *esp-= sizeof(char **);
-  memcpy(*esp, &argv, sizeof(char **));
-
-    *esp-= 4;
-  memcpy(*esp, &argc, 4);
-
-
-  *esp-=4;
-  **(char**)esp=0;
-
-  free(argv);
-  free(argv_addr);
-
-  hex_dump(*esp, *esp, 100 , true);
-}
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -100,12 +45,19 @@ process_execute (const char *file_name)
   char *saveptr;
   char *save=strtok_r(file_name, " ", &saveptr);
   
-
-
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (save, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
+  if (tid == TID_ERROR){
     palloc_free_page (fn_copy); 
+    }
+  else {
+    //get the current thread
+    struct thread *cur=thread_current();
+    struct child_status *child;
+    child = calloc(1,sizeof *child);
+    
+  }
+  
   return tid;
 }
 
@@ -169,7 +121,54 @@ start_process (void *file_name_)
 }
 
 
+static void argument_stack(const char**argv,int argc, void **esp){
+  char **argv_addr = calloc(argc, sizeof(char *));
+  // char *argv_addr[64];
+  uint8_t size=0;
+  int i;
 
+    for (i = argc - 1; i >= 0; i--) {
+        int argument_length = strlen(argv[i]) + 1;
+        *esp -= argument_length;
+        memcpy(*esp, argv[i], argument_length);
+        argv_addr[i] = *esp;
+    }
+
+    // if (size%4){
+    //   int j;
+    //   for(j=(4-(size%4));i>0;i--){
+    //     *esp--;
+    //     **(char **)esp=0;
+    //   }
+    // }
+
+     *esp = (void *)(((uintptr_t)*esp) & ~0x3);
+    
+
+    *esp-=4;
+    **(char**)esp=0;
+
+    for (i = argc - 1; i >= 0; i--) {
+        *esp -= sizeof(char *);
+        memcpy(*esp, &argv_addr[i], sizeof(char *));
+    }
+
+
+  *esp-=4;
+  memcpy(*esp, &argv, sizeof(char **));
+
+    *esp-= 4;
+  memcpy(*esp, &argc, 4);
+
+//가짜 리턴 주소
+  *esp-=4;
+  **(char**)esp=0;
+
+  free(argv);
+  free(argv_addr);
+
+  hex_dump(*esp, *esp, PHYS_BASE - (*esp) , true);
+}
 /* Waits for thread TID to die and returns its exit status.  If
    it was terminated by the kernel (i.e. killed due to an
    exception), returns -1.  If TID is invalid or if it was not a

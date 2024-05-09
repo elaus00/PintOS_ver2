@@ -24,6 +24,14 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+struct child_status {
+  tid_t child_id;
+  bool is_exit_normally;
+  bool has_been_waited;
+  int child_exit_status;
+  struct list_elem elem_child_status;  
+};
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -107,6 +115,15 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                 /* Page directory. */
+      tid_t parent_id;
+    // 0이면 로드 안됨. -1은 로드 실패. 1은 로드 성공
+        // 자식의 실행가능한 로딩 상태를 나타내는 신호
+
+    int child_load_status;
+    // child를 기다리기 위해 모니터가 사용됨. syscall에 의해 소유되고 child가 로드 실행가능해질때가지 기다린다. 
+    struct lock *lock_child;
+    struct list children;
+    struct file *exec_file;
 #endif
 
     /* Owned by thread.c. */
