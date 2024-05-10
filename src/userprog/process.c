@@ -21,9 +21,68 @@
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
-static void argument_stack(const char **argv, int argc, void **esp);
+// static void argument_stack(const char **argv, int argc, void **esp);
 
+// struct intr_frame {
+//   uint64_t R;
+//   uint64_t CS;
+//   uint64_t EFLAGS;
+//   uint64_t ESP;
+//   uint64_t SS;
+// };
 
+// static void argument_stack(const char **argv, int argc, void **esp)
+// {
+//   // char *argv_addr[32];
+//   uint8_t size = 0;
+//   int i;
+//   char *token;
+//   char **argv_addr = calloc(argc, sizeof(char *));
+
+//   for (i = argc - 1; i > -1; i--)
+//   {
+//     int argument_length = strlen(argv[i]) + 1;
+//     *esp -= argument_length;
+//     memcpy(*esp, argv[i], argument_length);
+//     size += argument_length;
+//     argv_addr[i] = *esp;
+//   }
+
+//   while ((int)*esp % 4 != 0)
+//   {
+//     *esp -= 1;
+//     memset(*esp, 0, 1);
+//   }
+
+//   *esp -= 4;
+//   // **(char**)esp=0;
+//   memset(*esp, 0, 4);
+
+//   for (i = argc - 1; i >= 0; i--)
+//   {
+//     // *esp -= 4;
+//     // memcpy(*esp, &argv_addr[i], strlen(&argv_addr[i]));
+//     token = argv_addr[i];
+//     *esp -= sizeof(char *);
+//     memcpy(*esp, token, sizeof(char *));
+//   }
+
+//   // *esp-=4;
+//   // *(int*)esp=argc;
+//   *esp -= sizeof(char **);
+//   memcpy(*esp, &argv, sizeof(char **));
+
+//   *esp -= 4;
+//   memcpy(*esp, &argc, 4);
+
+//   *esp -= 4;
+//   **(char **)esp = 0;
+
+//   free(argv);
+//   free(argv_addr);
+
+//   hex_dump(*esp, *esp, 100, true);
+// }
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -45,20 +104,23 @@ tid_t process_execute(const char *file_name)
   char *save = strtok_r(file_name, " ", &saveptr);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (save, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR){
-    palloc_free_page (fn_copy); 
-    }
-  else {
-    //get the current thread
-    struct thread *cur=thread_current();
+  tid = thread_create(save, PRI_DEFAULT, start_process, fn_copy);
+  if (tid == TID_ERROR)
+  {
+    palloc_free_page(fn_copy);
+  }
+  else
+  {
+    // get the current thread
+    struct thread *cur = thread_current();
     struct child_status *child;
-    child = calloc(1,sizeof(struct child_status));
-    if(child!=NULL){
-    child->child_id=tid;
-    child->is_exit_called=false;
-    child->has_been_waited=false;
-    list_push_back(&cur->children, &child->elem_child_status);
+    child = calloc(1, sizeof *child);
+    if (child != NULL)
+    {
+      child->child_id = tid;
+      child->is_exit_called = false;
+      child->has_been_waited = false;
+      list_push_back(&cur->children, &child->elem_child_status);
     }
   }
   return tid;
@@ -69,7 +131,16 @@ tid_t process_execute(const char *file_name)
 static void
 start_process(void *file_name_)
 {
-  char *file_name = file_name_;
+  char *file_name ;
+  file_name = malloc(strlen(file_name_) + 1);
+   if (file_name == NULL) {
+    // Handle memory allocation failure
+  } else {
+    // Safely copy the string
+    strlcpy(file_name, file_name_,strlen(file_name_) + 1);
+    }
+    
+
   struct intr_frame if_;
   bool success;
 
@@ -77,21 +148,32 @@ start_process(void *file_name_)
   int argc = 0;
   char *token;
   char *save_ptr;
-  for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
-  {
-    argc++;
-  }
-  char **argv = calloc(argc, sizeof(char *));
+  // for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
+  // {
+  //   argc++;
+  // }
+  // char **argv = calloc(argc, sizeof(char *));
 
-  file_name = file_name_;
 
-  int i = 0;
-  for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
-  {
-    argv[i] = token;
-    i++;
-  }
-  file_name = strtok_r(file_name_, " ", &save_ptr);
+  //  file_name = malloc(strlen(file_name_) + 1);
+  //  if (file_name == NULL) {
+  //   // Handle memory allocation failure
+  // } else {
+  //   // Safely copy the string
+  //   strlcpy(file_name, file_name_,strlen(file_name_) + 1);
+  //   }
+
+  // int i = 0;
+  // printf("it was %s \n", file_name);
+  // for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
+  // {
+  //   
+  //   argv[i] = token;
+  //   i++;
+  // }
+  
+
+  
 
   /* Initialize interrupt frame and load executable. */
   memset(&if_, 0, sizeof if_);
@@ -104,15 +186,8 @@ start_process(void *file_name_)
 
   if (!success)
   {
-
     palloc_free_page(file_name);
-    free(argv);
     thread_exit();
-  }
-
-  else if (success)
-  {
-    argument_stack(argv, argc, &if_.esp);
   }
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -124,55 +199,6 @@ start_process(void *file_name_)
   NOT_REACHED();
 }
 
-
-static void argument_stack(const char**argv,int argc, void **esp){
-  char **argv_addr = calloc(argc, sizeof(char *));
-  // char *argv_addr[64];
-  uint8_t size=0;
-  int i;
-
-    for (i = argc - 1; i >= 0; i--) {
-        int argument_length = strlen(argv[i]) + 1;
-        *esp -= argument_length;
-        memcpy(*esp, argv[i], argument_length);
-        argv_addr[i] = *esp;
-    }
-
-    // if (size%4){
-    //   int j;
-    //   for(j=(4-(size%4));i>0;i--){
-    //     *esp--;
-    //     **(char **)esp=0;
-    //   }
-    // }
-
-     *esp = (void *)(((uintptr_t)*esp) & ~0x3);
-    
-
-    *esp-=4;
-    **(char**)esp=0;
-
-    for (i = argc - 1; i >= 0; i--) {
-        *esp -= sizeof(char *);
-        memcpy(*esp, &argv_addr[i], sizeof(char *));
-    }
-
-
-  *esp-=4;
-  memcpy(*esp, &argv, sizeof(char **));
-
-    *esp-= 4;
-  memcpy(*esp, &argc, 4);
-
-//가짜 리턴 주소
-  *esp-=4;
-  **(char**)esp=0;
-
-  free(argv);
-  free(argv_addr);
-
-  hex_dump(*esp, *esp, PHYS_BASE - (*esp) , true);
-}
 /* Waits for thread TID to die and returns its exit status.  If
    it was terminated by the kernel (i.e. killed due to an
    exception), returns -1.  If TID is invalid or if it was not a
@@ -206,6 +232,7 @@ int process_wait(tid_t child_tid UNUSED)
           cond_wait(&cur->cond_child, &cur->lock_child);
         }
         if (ch_status->is_exit_called && !ch_status->has_been_waited)
+        if (ch_status->is_exit_called && !ch_status->has_been_waited)
         {
           status = ch_status->child_exit_status;
           ch_status->has_been_waited = true;
@@ -219,8 +246,9 @@ int process_wait(tid_t child_tid UNUSED)
       }
     }
     return status;
-  } 
-  else return TID_ERROR;
+  }
+  else
+    return TID_ERROR;
 }
 
 /* Free the current process's resources. */
@@ -350,8 +378,14 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
     goto done;
   process_activate();
 
+  char *copy = malloc(strlen(file_name) + 1);
+  strlcpy(copy, file_name, strlen(file_name) + 1);
+  char *save_ptr;
+  char *file_name_;
+  file_name_ = strtok_r(copy, " ", &save_ptr);
+  // printf("---------the value is %s ------------- \n", file_name);
   /* Open executable file. */
-  file = filesys_open(file_name);
+  file = filesys_open(file_name_);
   if (file == NULL)
   {
     printf("load: %s: open failed\n", file_name);
@@ -554,6 +588,8 @@ setup_stack(void **esp, char *file_name)
   uint8_t *kpage;
   bool success = false;
 
+  // printf("it was %s \n",file_name);
+
   kpage = palloc_get_page(PAL_USER | PAL_ZERO);
   if (kpage != NULL)
   {
@@ -582,8 +618,8 @@ setup_stack(void **esp, char *file_name)
        token = strtok_r(NULL, " ", &save_ptr), i++)
   {
     *esp -= strlen(token) + 1;
+    // printf("it is  %s \n",token);
     memcpy(*esp, token, strlen(token) + 1);
-
     argv[i] = *esp;
   }
 

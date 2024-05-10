@@ -25,14 +25,6 @@ typedef int tid_t;
 #define PRI_MAX 63     /* Highest priority. */
 // #define USERPROG
 
-struct child_status {
-  tid_t child_id;
-  bool is_exit_called;
-  bool has_been_waited;
-  int child_exit_status;
-  struct list_elem elem_child_status;  
-};
-
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -135,6 +127,14 @@ struct thread
    unsigned magic; /* Detects stack overflow. */
 };
 
+struct child_status
+{
+   tid_t child_id;
+   bool is_exit_called;
+   bool has_been_waited;
+   int child_exit_status;
+   struct list_elem elem_child_status;
+};
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
