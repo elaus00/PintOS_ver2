@@ -22,58 +22,66 @@ static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
 static void argument_stack(const char **argv, int argc, void **esp);
 
-static void argument_stack(const char **argv, int argc, void **esp)
-{
-  // char *argv_addr[32];
-  uint8_t size = 0;
-  int i;
-  char *token;
-  char **argv_addr = calloc(argc, sizeof(char *));
+// struct intr_frame {
+//   uint64_t R;
+//   uint64_t CS;
+//   uint64_t EFLAGS;
+//   uint64_t ESP;
+//   uint64_t SS;
+// };
 
-  for (i = argc - 1; i > -1; i--)
-  {
-    int argument_length = strlen(argv[i]) + 1;
-    *esp -= argument_length;
-    memcpy(*esp, argv[i], argument_length);
-    size += argument_length;
-    argv_addr[i] = *esp;
-  }
+// static void argument_stack(const char **argv, int argc, void **esp)
+// {
+//   // char *argv_addr[32];
+//   uint8_t size = 0;
+//   int i;
+//   char *token;
+//   char **argv_addr = calloc(argc, sizeof(char *));
 
-  while ((int)*esp % 4 != 0)
-  {
-    *esp -= 1;
-    memset(*esp, 0, 1);
-  }
+//   for (i = argc - 1; i > -1; i--)
+//   {
+//     int argument_length = strlen(argv[i]) + 1;
+//     *esp -= argument_length;
+//     memcpy(*esp, argv[i], argument_length);
+//     size += argument_length;
+//     argv_addr[i] = *esp;
+//   }
 
-  *esp -= 4;
-  // **(char**)esp=0;
-  memset(*esp, 0, 4);
+//   while ((int)*esp % 4 != 0)
+//   {
+//     *esp -= 1;
+//     memset(*esp, 0, 1);
+//   }
 
-  for (i = argc - 1; i >= 0; i--)
-  {
-    // *esp -= 4;
-    // memcpy(*esp, &argv_addr[i], strlen(&argv_addr[i]));
-    token = argv_addr[i];
-    *esp -= sizeof(char *);
-    memcpy(*esp, token, sizeof(char *));
-  }
+//   *esp -= 4;
+//   // **(char**)esp=0;
+//   memset(*esp, 0, 4);
 
-  // *esp-=4;
-  // *(int*)esp=argc;
-  *esp -= sizeof(char **);
-  memcpy(*esp, &argv, sizeof(char **));
+//   for (i = argc - 1; i >= 0; i--)
+//   {
+//     // *esp -= 4;
+//     // memcpy(*esp, &argv_addr[i], strlen(&argv_addr[i]));
+//     token = argv_addr[i];
+//     *esp -= sizeof(char *);
+//     memcpy(*esp, token, sizeof(char *));
+//   }
 
-  *esp -= 4;
-  memcpy(*esp, &argc, 4);
+//   // *esp-=4;
+//   // *(int*)esp=argc;
+//   *esp -= sizeof(char **);
+//   memcpy(*esp, &argv, sizeof(char **));
 
-  *esp -= 4;
-  **(char **)esp = 0;
+//   *esp -= 4;
+//   memcpy(*esp, &argc, 4);
 
-  free(argv);
-  free(argv_addr);
+//   *esp -= 4;
+//   **(char **)esp = 0;
 
-  hex_dump(*esp, *esp, 100, true);
-}
+//   free(argv);
+//   free(argv_addr);
+
+//   hex_dump(*esp, *esp, 100, true);
+// }
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -97,7 +105,23 @@ tid_t process_execute(const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(save, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
+  {
     palloc_free_page(fn_copy);
+  }
+  else
+  {
+    // get the current thread
+    struct thread *cur = thread_current();
+    struct child_status *child;
+    child = calloc(1, sizeof *child);
+    if (child != NULL)
+    {
+      child->child_id = tid;
+      child->is_exit_called = false;
+      child->has_been_waited = false;
+      list_push_back(&cur->children, &child->elem_child_status);
+    }
+  }
   return tid;
 }
 
@@ -141,16 +165,15 @@ start_process(void *file_name_)
 
   if (!success)
   {
-
     palloc_free_page(file_name);
     free(argv);
     thread_exit();
   }
 
-  else if (success)
-  {
-    argument_stack(argv, argc, &if_.esp);
-  }
+  // else if (success)
+  // {
+  //   argument_stack(argv, argc, &if_.esp);
+  // }
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -160,6 +183,55 @@ start_process(void *file_name_)
   asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(&if_) : "memory");
   NOT_REACHED();
 }
+// static void
+// start_process(void *file_name_)
+// {
+//   char *file_name = file_name_;
+//   bool success;
+//   struct intr_frame if_;
+
+//   char *argv[128];
+//   int argc = 0;
+//   char *save_ptr;
+//   struct thread *cur = thread_current();
+
+//   file_name = strtok_r(file_name, " ", &save_ptr);
+
+//   memset(&if_, 0, sizeof if_);
+//   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
+//   if_.cs = SEL_UCSEG;
+//   if_.eflags = FLAG_IF;
+//   success = load(file_name, &if_.eip, &if_.esp);
+
+
+//   while(token){
+//     argv[argc++] = token;
+//     token = strtok_r(NULL, " ", &save_ptr);
+//   }
+  
+
+//   struct thread *parent = thread_get_by_id(cur->parent_id);
+//   if (parent!=NULL){
+//     lock_acquire(&parent->lock_child);
+//     if(!success) 
+//       cur->child_load_status = -1;
+//     else
+//       cur->child_load_status = 1;
+//     cond_signal(&parent->cond_child, &parent->lock_child);
+//     lock_release(&parent->lock_child);
+//   }
+  
+//   if (!success)
+//   {
+//     palloc_free_page(file_name);
+//     thread_exit();
+//   }
+
+//   argument_stack(argv, argc, &if_.esp);
+  
+//   asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(&if_) : "memory");
+//   NOT_REACHED();
+// }
 
 /* Waits for thread TID to die and returns its exit status.  If
    it was terminated by the kernel (i.e. killed due to an
@@ -193,7 +265,7 @@ int process_wait(tid_t child_tid UNUSED)
         {
           cond_wait(&cur->cond_child, &cur->lock_child);
         }
-        if (ch_status->is_exit_normally && !ch_status->has_been_waited)
+        if (ch_status->is_exit_called && !ch_status->has_been_waited)
         {
           status = ch_status->child_exit_status;
           ch_status->has_been_waited = true;
@@ -207,8 +279,9 @@ int process_wait(tid_t child_tid UNUSED)
       }
     }
     return status;
-  } 
-  else return TID_ERROR;
+  }
+  else
+    return TID_ERROR;
 }
 
 /* Free the current process's resources. */

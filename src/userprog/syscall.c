@@ -4,8 +4,24 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "userprog/pagedir.h"
+#include "devices/shutdown.h"
+
+static pid_t exec (const char *);
+static void halt (void);
+static void exit (int);
 
 static void syscall_handler(struct intr_frame *);
+
+bool is_valid_ptr(const void *usr_ptr)
+{
+  struct thread *cur = thread_current();
+  if (usr_ptr == NULL || !is_user_vaddr(usr_ptr)) {
+    return false;
+  }
+  void *uaddr = pagedir_get_page(cur->pagedir, usr_ptr);
+  return uaddr != NULL;
+}
 
 void syscall_init(void)
 {
@@ -15,7 +31,7 @@ void syscall_init(void)
 static void
 syscall_handler(struct intr_frame *f UNUSED)
 {
-  int *p = f->esp;
+  int *p = (int *)f->esp;
   if (!is_valid_ptr(p))
   {
     exit(-1);
@@ -24,11 +40,13 @@ syscall_handler(struct intr_frame *f UNUSED)
   switch (syscall_number)
   {
   case SYS_EXIT:
-    int status = *p + 1;
-    sys_exit(status);
+  {
+    int status = *(p + 1);
+    exit(status);
     break;
+  }
   case SYS_HALT:
-    f->eax = 1;
+    halt();
     break;
 
   default:
@@ -39,19 +57,12 @@ syscall_handler(struct intr_frame *f UNUSED)
 
   // thread_exit ();
 }
-bool is_valid_ptr(const void *usr_ptr)
-{
-  struct thread *cur = thread_current();
-  ASSERT(!usr_ptr);
-  is_user_vaddr(usr_ptr);
-  void *uaddr = pagedir_get_page(cur->pagedir, usr_ptr);
-  ASSERT(!uaddr);
-}
 
-pid_t exec(const char *cmd_line)
+pid_t
+exec(const char *cmd_line)
 {
   struct thread *cur = thread_current();
-  tid_t tid = cur->tid;
+  tid_t tid = NULL;
   if (!is_valid_ptr(cmd_line))
   {
     exit(-1);
@@ -70,4 +81,41 @@ pid_t exec(const char *cmd_line)
     lock_release(cur->lock_child);
   }
   return tid;
+}
+
+int wait(pid_t pid){
+  return process_wait(pid);
+}
+
+void exit(int status)
+{
+  struct thread *cur = thread_current();
+  struct thread *parent = thread_get_by_id(&cur->parent_id);
+
+  // parent thread가 존재할 경우, current thread를 찾기 위해 children list를 검색한다.
+  if (parent)
+  {
+    struct list_elem *e;
+    struct child_status *child = NULL;
+
+    for (e = list_begin(&parent->children); e != list_end(&parent->children); e = list_next(e))
+    {
+      child = list_entry(e, struct child_status, elem_child_status);
+      // parent_list에 있는 특정 child의 id가 현재 실행중인 스레드의 id 값이라면 exit한다.
+      if (child->child_id == cur->tid)
+      {
+        lock_acquire(&parent->lock_child);
+        child->is_exit_called = true;
+        child->child_exit_status = status;
+        lock_release(&parent->lock_child);
+        break;
+      }
+    }
+    thread_exit();
+  }
+}
+
+void halt(void)
+{
+  shutdown_power_off();
 }
