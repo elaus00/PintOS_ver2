@@ -22,6 +22,7 @@
 #include "threads/palloc.h"
 #include "threads/pte.h"
 #include "threads/thread.h"
+
 #ifdef USERPROG
 #include "userprog/process.h"
 #include "userprog/exception.h"
@@ -31,6 +32,7 @@
 #else
 #include "tests/threads/tests.h"
 #endif
+
 #ifdef FILESYS
 #include "devices/block.h"
 #include "devices/ide.h"
@@ -147,7 +149,7 @@ static void
 bss_init (void) 
 {
   extern char _start_bss, _end_bss;
-  memset (&_start_bss, 0, &_end_bss - &_start_bss);
+  memset (&_start_bss, 0, &_end_bss - &_start_bss); //length를 계산 | 바이트를 채우지 않으므로 단순 초기화라고 간주
 }
 
 /* Populates the base page directory and page table with the
