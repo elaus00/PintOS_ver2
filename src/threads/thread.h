@@ -127,6 +127,7 @@ struct thread
 #endif
    /* Owned by thread.c. */
    unsigned magic; /* Detects stack overflow. */
+   struct file *fdt; // file discriptor table 추가
 };
 
 struct child_status

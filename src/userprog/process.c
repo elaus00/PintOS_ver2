@@ -23,68 +23,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
-// static void argument_stack(const char **argv, int argc, void **esp);
 
-// struct intr_frame {
-//   uint64_t R;
-//   uint64_t CS;
-//   uint64_t EFLAGS;
-//   uint64_t ESP;
-//   uint64_t SS;
-// };
-
-// static void argument_stack(const char **argv, int argc, void **esp)
-// {
-//   // char *argv_addr[32];
-//   uint8_t size = 0;
-//   int i;
-//   char *token;
-//   char **argv_addr = calloc(argc, sizeof(char *));
-
-//   for (i = argc - 1; i > -1; i--)
-//   {
-//     int argument_length = strlen(argv[i]) + 1;
-//     *esp -= argument_length;
-//     memcpy(*esp, argv[i], argument_length);
-//     size += argument_length;
-//     argv_addr[i] = *esp;
-//   }
-
-//   while ((int)*esp % 4 != 0)
-//   {
-//     *esp -= 1;
-//     memset(*esp, 0, 1);
-//   }
-
-//   *esp -= 4;
-//   // **(char**)esp=0;
-//   memset(*esp, 0, 4);
-
-//   for (i = argc - 1; i >= 0; i--)
-//   {
-//     // *esp -= 4;
-//     // memcpy(*esp, &argv_addr[i], strlen(&argv_addr[i]));
-//     token = argv_addr[i];
-//     *esp -= sizeof(char *);
-//     memcpy(*esp, token, sizeof(char *));
-//   }
-
-//   // *esp-=4;
-//   // *(int*)esp=argc;
-//   *esp -= sizeof(char **);
-//   memcpy(*esp, &argv, sizeof(char **));
-
-//   *esp -= 4;
-//   memcpy(*esp, &argc, 4);
-
-//   *esp -= 4;
-//   **(char **)esp = 0;
-
-//   free(argv);
-//   free(argv_addr);
-
-//   hex_dump(*esp, *esp, 100, true);
-// }
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -235,46 +174,40 @@ if (!success)
 
 int process_wait (tid_t child_tid)
 {
-  int status;
-  struct thread *cur;
+  if (child_tid == TID_ERROR)
+    return TID_ERROR;
+
+  struct thread *cur = thread_current();
   struct child_status *child = NULL;
   struct list_elem *e;
-  if (child_tid != TID_ERROR)
-   {
-     cur = thread_current ();
-     e = list_tail (&cur->children);
-     while ((e = list_prev (e)) != list_head (&cur->children))
-       {
-         child = list_entry(e, struct child_status, elem_child_status);
-         if (child->child_id == child_tid)
-           break;
-       }
 
-     if (child == NULL)
-       status = -1;
-     else
-       {
-         lock_acquire(&cur->lock_child);
-         
-         while (thread_get_by_id (child_tid)!=NULL){
-           cond_wait (&cur->cond_child, &cur->lock_child);
-        }
-         if (!child->is_exit_called || child->has_been_waited){
-           status = -1;}
-         else
-           { 
-             status = child->child_exit_status;
-             child->has_been_waited = true;
-           }
-         lock_release(&cur->lock_child);
-        //  printf("wait process 완료 \n");
-         
-       }
-   }
-  else 
-    status = TID_ERROR;
+  for (e = list_begin(&cur->children); e != list_end(&cur->children); e = list_next(e))
+  {
+    child = list_entry(e, struct child_status, elem_child_status);
+    if (child->child_id == child_tid)
+      break;
+    child = NULL;
+  }
+
+  if (child == NULL)
+    return -1;
+
+  lock_acquire(&cur->lock_child);
+  while (thread_get_by_id(child_tid) != NULL)
+    cond_wait(&cur->cond_child, &cur->lock_child);
+
+  int status = -1;
+  if (child->is_exit_called && !child->has_been_waited)
+  {
+    status = child->child_exit_status;
+    child->has_been_waited = true;
+  }
+
+  lock_release(&cur->lock_child);
   return status;
 }
+
+
 
 /* Free the current process's resources. */
 void process_exit(void)
@@ -337,8 +270,6 @@ void process_exit(void)
       lock_release (&parent->lock_child);
     }
 
-    
-    
 }
 
 /* Sets up the CPU for running user code in the current

@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "*.inc": "c",
+        "vaddr.h": "c",
+        "thread.h": "c"
+    }
+}

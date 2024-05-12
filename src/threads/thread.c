@@ -817,6 +817,7 @@ init_thread(struct thread *t, const char *name, int priority)
 #ifdef USERPROG
   t->child_load_status = 0;
   // printf("락이 도착했다\n");
+  t->fdt = NULL;
   lock_init(&t->lock_child);
   cond_init(&t->cond_child);
   list_init(&t->children);
