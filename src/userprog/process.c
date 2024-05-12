@@ -303,17 +303,14 @@ void process_exit(void)
     pagedir_destroy(pd);
   }
     /*free children list*///내 코드 아님
-   parent = thread_get_by_id (cur->parent_id);
-  if (parent != NULL)
+    e = list_begin (&cur->children);
+  while (e != list_tail(&cur->children))
     {
-      lock_acquire (&parent->lock_child);
-      if (parent->child_load_status == 0){
-	    parent->child_load_status = -1;}
-      cond_signal (&parent->cond_child, &parent->lock_child);
-      if (parent->childfinish==NULL){
-	    parent->childfinish = true;}
-      cur->tid=NULL;
-      lock_release (&parent->lock_child);
+      next = list_next (e);
+      child = list_entry (e, struct child_status, elem_child_status);
+      list_remove (e);
+      free (child);
+      e = next;
     }
   
   /* re-enable the file's writable property*/
@@ -331,8 +328,8 @@ void process_exit(void)
       if (parent->child_load_status == 0){
 	    parent->child_load_status = -1;}
       cond_signal (&parent->cond_child, &parent->lock_child);
-      if (parent->childfinish==NULL){
-	    parent->childfinish = true;}
+      // if (parent->childfinish==NULL){
+	    // parent->childfinish = true;}
       cur->tid=NULL;
       lock_release (&parent->lock_child);
     }
