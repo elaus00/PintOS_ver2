@@ -11,6 +11,7 @@
 #include "filesys/file.h"
 #include "devices/input.h"
 #include "filesys/filesys.h"
+#include <stdlib.h>
 
 static pid_t exec(const char *);
 static void halt(void);
@@ -23,9 +24,10 @@ int open(const char *file_name);
 static int allocate_fd (void);
 bool remove(const char *file_name);
 int filesize(int fd);
-// void close(int fd);
-// unsigned tell(int fd);
+void close(int fd);
+unsigned tell(int fd);
 void seek(int fd, unsigned position);
+void close_open_file (int fd);
 
 struct lock fs_lock;
 
@@ -67,7 +69,6 @@ syscall_handler(struct intr_frame *f UNUSED)
     uint32_t *esp = (uint32_t *)f->esp;
     if (!is_valid_ptr(esp))
     {
-        // printf("valid");
         exit(-1);
     }
     int syscall_number = *esp;
@@ -110,10 +111,10 @@ syscall_handler(struct intr_frame *f UNUSED)
         seek(*(esp + 1), *(esp + 2));
         break;
     case SYS_TELL:
-        // f->eax = tell(*(esp + 1));
+        f->eax = tell(*(esp + 1));
         break;
     case SYS_CLOSE:
-        // close(*(esp + 1));
+        close(*(esp + 1));
         break;
     default:
     // printf("%dno system call!\n", *esp);
@@ -180,7 +181,7 @@ void exit(int status)
 {
   struct thread *cur = thread_current();
   struct thread *parent = thread_get_by_id(&cur->parent_id);
-printf("%s: exit(%d)\n", thread_name(), status);
+  printf("%s: exit(%d)\n", thread_name(), status);
   // parent thread가 존재할 경우, current thread를 찾기 위해 children list를 검색한다.
   if (parent != NULL)
   {
@@ -272,8 +273,7 @@ int write(int fd, const void *buffer, unsigned size) // 내코드 아님
 struct file_descriptor *
 get_open_file(int fd)// 내 코드 아님
 {
-
-  struct list_elem *e;
+   struct list_elem *e;
   struct file_descriptor *fd_struct;
   e = list_tail(&open_files);
   while ((e = list_prev(e)) != list_head(&open_files))
@@ -430,15 +430,16 @@ int filesize(int fd)
     return status;
 }
 
-// void close(int fd)
-// {
-//     lock_acquire(&fs_lock);
-//     struct file_descriptor *fd_struct = get_open_file(fd);
-//     if (fd_struct && fd_struct->owner == thread_current()->tid)
-//         file_close(fd);
-//     lock_release(&fs_lock);
-//     return ;
-// }
+void close(int fd)
+{
+    lock_acquire(&fs_lock);
+    struct file_descriptor *fd_struct = get_open_file(fd);
+    if (fd_struct !=NULL && fd_struct->owner == thread_current()->tid){
+        close_open_file(fd);}
+    lock_release(&fs_lock);
+    return ;
+}
+
 void seek(int fd, unsigned position)
 {
     lock_acquire(&fs_lock);
@@ -448,12 +449,36 @@ void seek(int fd, unsigned position)
     lock_release(&fs_lock);
 }
 
-// unsigned tell(int fd)
-// {
-//     lock_acquire(&fs_lock);
-//     struct file_descriptor *fd_struct = get_open_file(fd);
-//     unsigned status = fd_struct ? file_tell(fd_struct->file_struct) : -1;
-//     lock_release(&fs_lock);
+unsigned tell(int fd)
+{
+    lock_acquire(&fs_lock);
+    struct file_descriptor *fd_struct = get_open_file(fd);
+    unsigned status = fd_struct ? file_tell(fd_struct->file_struct) : -1;
+    lock_release(&fs_lock);
 
-//     return status;
-// }
+    return status;
+}
+
+//내 코드 아님
+void
+close_open_file (int fd)
+{
+  struct list_elem *e;
+  struct list_elem *prev;
+  struct file_descriptor *fd_struct; 
+  e = list_end (&open_files);
+  while (e != list_head (&open_files)) 
+    {
+      prev = list_prev (e);
+      fd_struct = list_entry (e, struct file_descriptor, elem);
+      if (fd_struct->fd_num == fd)
+	{
+	  list_remove (e);
+          file_close (fd_struct->file_struct);
+	  free (fd_struct);
+	  return ;
+	}
+      e = prev;
+    }
+  return ;
+}
