@@ -8,5 +8,6 @@ typedef int pid_t;
 
 void syscall_init (void);
 bool is_valid_ptr (const void *);
+void close_file_by_owner (tid_t tid);
 
 #endif /* userprog/syscall.h */

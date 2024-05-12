@@ -121,6 +121,8 @@ void thread_init(void)
    Also creates the idle thread. */
 void thread_start(void)
 {
+
+  
   threading_started = true;
   /* Create the idle thread. */
   struct semaphore idle_started;
@@ -581,12 +583,12 @@ void thread_exit(void)
 #ifdef USERPROG
   process_exit();
 #endif
-
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable();
   list_remove(&thread_current()->allelem);
+  // printf("누가먼저게\n");
   thread_current()->status = THREAD_DYING;
   schedule();
   NOT_REACHED();
@@ -814,6 +816,7 @@ init_thread(struct thread *t, const char *name, int priority)
 /* Initialize for userprog */
 #ifdef USERPROG
   t->child_load_status = 0;
+  // printf("락이 도착했다\n");
   lock_init(&t->lock_child);
   cond_init(&t->cond_child);
   list_init(&t->children);
@@ -950,3 +953,18 @@ thread_get_by_id(tid_t id)
   }
   return NULL;
 }
+// struct thread
+// *thread_get_by_id (tid_t id)
+// {
+//   ASSERT (id != TID_ERROR);
+//   struct list_elem *e;
+//   struct thread *t;
+//   e = list_tail (&all_list);
+//   while ((e = list_prev (e)) != list_head (&all_list))
+//     {
+//       t = list_entry (e, struct thread, allelem);
+//       if (t->tid == id && t->status != THREAD_DYING)
+//         return t;
+//     }
+//   return NULL;
+// }

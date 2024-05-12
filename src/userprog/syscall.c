@@ -14,6 +14,7 @@ static pid_t exec(const char *);
 static void halt(void);
 static void exit(int);
 static int write(int, const void *, unsigned);
+void close_file_by_owner (tid_t tid);
 
 static void syscall_handler(struct intr_frame *);
 
@@ -57,7 +58,7 @@ syscall_handler(struct intr_frame *f UNUSED)
   esp = (uint32_t *)f->esp;
   if (!is_valid_ptr(esp))
   {
-    // printf("valid");
+    printf("valid");
     exit(-1);
   }
   switch (*esp)
@@ -66,8 +67,8 @@ syscall_handler(struct intr_frame *f UNUSED)
   {
     // printf("exit!\n");
     int status = *(esp + 1);
-    // printf(status);
     exit(status);
+    printf("exited!\n");
     break;
   }
   case SYS_HALT:
@@ -78,6 +79,11 @@ syscall_handler(struct intr_frame *f UNUSED)
     // printf("write!\n");
     f->eax = write(*(esp + 1), (void *)*(esp + 2), *(esp + 3));
     break;
+    
+  case SYS_WAIT:
+  f->eax=wait(*(esp+1));
+  printf("waitting...\n");
+  break;
 
   case SYS_EXEC:
     printf("execute!\n");
@@ -94,6 +100,7 @@ syscall_handler(struct intr_frame *f UNUSED)
 
 pid_t exec(const char *cmd_line)
 {
+  
   struct thread *cur = thread_current();
   tid_t tid = NULL;
   if (!is_valid_ptr(cmd_line))
@@ -101,17 +108,16 @@ pid_t exec(const char *cmd_line)
     exit(-1);
   }
   else
-  {
+  { 
     cur->child_load_status = 0;
     tid = process_execute(cmd_line);
     lock_acquire(&cur->lock_child);
     cond_wait(&cur->child_load_status, &cur->lock_child);
-
     if (cur->child_load_status == -1)
     {
       tid = -1;
     }
-    lock_release(cur->lock_child);
+    lock_release(&cur->lock_child);
   }
   return tid;
 }
@@ -125,7 +131,7 @@ void exit(int status)
 {
   struct thread *cur = thread_current();
   struct thread *parent = thread_get_by_id(&cur->parent_id);
-
+printf("%s: exit(%d)\n", thread_name(), status);
   // parent thread가 존재할 경우, current thread를 찾기 위해 children list를 검색한다.
   if (parent != NULL)
   {
@@ -142,6 +148,7 @@ void exit(int status)
         child->is_exit_called = true;
         child->child_exit_status = status;
         lock_release(&parent->lock_child);
+        // printf("나갑니다!\n");
         break;
       }
     }
@@ -154,7 +161,7 @@ void halt(void)
   shutdown_power_off();
 }
 
-int write(int fd, const void *buffer, unsigned size)
+int write(int fd, const void *buffer, unsigned size) // 내코드 아님
 {
   struct file_descriptor *fd_struct;
   int status = 0;
@@ -214,7 +221,7 @@ int write(int fd, const void *buffer, unsigned size)
 }
 
 struct file_descriptor *
-get_open_file(int fd)
+get_open_file(int fd)// 내 코드 아님
 {
 
   struct list_elem *e;
@@ -227,4 +234,25 @@ get_open_file(int fd)
       return fd_struct;
   }
   return NULL;
+}
+
+void
+close_file_by_owner (tid_t tid)// 내코드아님
+{
+  struct list_elem *e;
+  struct list_elem *next;
+  struct file_descriptor *fd_struct; 
+  e = list_begin (&open_files);
+  while (e != list_tail (&open_files)) 
+    {
+      next = list_next (e);
+      fd_struct = list_entry (e, struct file_descriptor, elem);
+      if (fd_struct->owner == tid)
+	{
+	  list_remove (e);
+	  file_close (fd_struct->file_struct);
+          free (fd_struct);
+	}
+      e = next;
+    }
 }

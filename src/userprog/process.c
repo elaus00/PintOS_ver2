@@ -17,6 +17,8 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "userprog/syscall.h"
+#include "threads/synch.h"
 
 
 static thread_func start_process NO_RETURN;
@@ -123,6 +125,9 @@ tid_t process_execute(const char *file_name)
       list_push_back(&cur->children, &child->elem_child_status);
     }
   }
+
+  struct thread *t= thread_get_by_id(tid);
+  t->parent_id = thread_current()->tid;
   return tid;
 }
 
@@ -143,6 +148,10 @@ start_process(void *file_name_)
 
   struct intr_frame if_;
   bool success;
+  int load_status;
+  struct thread *cur = thread_current ();
+  struct thread *parent;
+
 
   // char *argv[32];
   int argc = 0;
@@ -171,10 +180,6 @@ start_process(void *file_name_)
   //   argv[i] = token;
   //   i++;
   // }
-  
-
-  
-
   /* Initialize interrupt frame and load executable. */
   memset(&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -183,6 +188,25 @@ start_process(void *file_name_)
   success = load(file_name, &if_.eip, &if_.esp);
   /*--3*/
   /* If load failed, quit. --5*/
+if (!success)
+    load_status = -1;
+  else
+    load_status = 1;
+
+  parent = thread_get_by_id (cur->parent_id);
+  if (parent != NULL){
+    {
+      lock_acquire(&parent->lock_child);
+      parent->child_load_status = load_status;
+      cond_signal(&parent->cond_child, &parent->lock_child);
+      lock_release(&parent->lock_child);
+      // printf("start process 완료 \n");
+    }
+
+  if (!success)
+    thread_exit ();
+
+
 
   if (!success)
   {
@@ -197,7 +221,7 @@ start_process(void *file_name_)
      and jump to it. */
   asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(&if_) : "memory");
   NOT_REACHED();
-}
+}}
 
 /* Waits for thread TID to die and returns its exit status.  If
    it was terminated by the kernel (i.e. killed due to an
@@ -209,46 +233,47 @@ start_process(void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 
-int process_wait(tid_t child_tid UNUSED)
+int process_wait (tid_t child_tid)
 {
-  int status = 0;
-  struct thread *cur = thread_current();
-  struct list *children_list = &cur->children;
-  struct list_elem *e = NULL;
-  struct child_status *ch_status = NULL;
-
-  // Assert로 tid 거를 경우 에러 코드 리턴 불가
+  int status;
+  struct thread *cur;
+  struct child_status *child = NULL;
+  struct list_elem *e;
   if (child_tid != TID_ERROR)
-  {
-    // Traversal child thread list
-    for (e = list_begin(children_list); e != list_end(children_list); e = list_next(e))
-    {
-      ch_status = list_entry(e, struct child_status, elem_child_status);
-      if (ch_status->child_id == child_tid)
-      {
-        lock_acquire(&cur->lock_child);
-        while (!thread_get_by_id(child_tid))
-        {
-          cond_wait(&cur->cond_child, &cur->lock_child);
+   {
+     cur = thread_current ();
+     e = list_tail (&cur->children);
+     while ((e = list_prev (e)) != list_head (&cur->children))
+       {
+         child = list_entry(e, struct child_status, elem_child_status);
+         if (child->child_id == child_tid)
+           break;
+       }
+
+     if (child == NULL)
+       status = -1;
+     else
+       {
+         lock_acquire(&cur->lock_child);
+         
+         while (thread_get_by_id (child_tid)!=NULL){
+           cond_wait (&cur->cond_child, &cur->lock_child);
         }
-        if (ch_status->is_exit_called && !ch_status->has_been_waited)
-        if (ch_status->is_exit_called && !ch_status->has_been_waited)
-        {
-          status = ch_status->child_exit_status;
-          ch_status->has_been_waited = true;
-          return status;
-        }
-        else
-        {
-          status = -1;
-        }
-        lock_release(&cur->lock_child);
-      }
-    }
-    return status;
-  }
-  else
-    return TID_ERROR;
+         if (!child->is_exit_called || child->has_been_waited){
+           status = -1;}
+         else
+           { 
+             status = child->child_exit_status;
+             child->has_been_waited = true;
+           }
+         lock_release(&cur->lock_child);
+        //  printf("wait process 완료 \n");
+         
+       }
+   }
+  else 
+    status = TID_ERROR;
+  return status;
 }
 
 /* Free the current process's resources. */
@@ -256,12 +281,16 @@ void process_exit(void)
 {
   struct thread *cur = thread_current();
   uint32_t *pd;
-
+   struct thread *parent; // 내 코드아님
+  struct list_elem *e;
+  struct list_elem *next;
+  struct child_status *child;
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
   if (pd != NULL)
   {
+    
     /* Correct ordering here is crucial.  We must set
        cur->pagedir to NULL before switching page directories,
        so that a timer interrupt can't switch back to the
@@ -273,6 +302,43 @@ void process_exit(void)
     pagedir_activate(NULL);
     pagedir_destroy(pd);
   }
+    /*free children list*///내 코드 아님
+   parent = thread_get_by_id (cur->parent_id);
+  if (parent != NULL)
+    {
+      lock_acquire (&parent->lock_child);
+      if (parent->child_load_status == 0){
+	    parent->child_load_status = -1;}
+      cond_signal (&parent->cond_child, &parent->lock_child);
+      if (parent->childfinish==NULL){
+	    parent->childfinish = true;}
+      cur->tid=NULL;
+      lock_release (&parent->lock_child);
+    }
+  
+  /* re-enable the file's writable property*/
+  if (cur->exec_file != NULL){
+    file_allow_write (cur->exec_file);
+  }
+  /* free files whose owner is the current thread*/
+  close_file_by_owner (cur->tid);  
+
+  /* free the supplemental page table */
+  parent = thread_get_by_id (cur->parent_id);
+  if (parent != NULL)
+    {
+      lock_acquire (&parent->lock_child);
+      if (parent->child_load_status == 0){
+	    parent->child_load_status = -1;}
+      cond_signal (&parent->cond_child, &parent->lock_child);
+      if (parent->childfinish==NULL){
+	    parent->childfinish = true;}
+      cur->tid=NULL;
+      lock_release (&parent->lock_child);
+    }
+
+    
+    
 }
 
 /* Sets up the CPU for running user code in the current
@@ -388,10 +454,11 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
   file = filesys_open(file_name_);
   if (file == NULL)
   {
-    printf("load: %s: open failed\n", file_name);
+    printf("load: %s: open failed\n", file_name_);
     goto done;
   }
-
+  // t->exec_file = file;
+  // file_deny_write (file);
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 3 || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Elf32_Phdr) || ehdr.e_phnum > 1024)
   {
@@ -651,7 +718,7 @@ setup_stack(void **esp, char *file_name)
   *esp -= sizeof(int);
   memcpy(*esp, &zero, sizeof(int));
 
-  hex_dump(*esp, *esp, PHYS_BASE - (*esp), true);
+  // hex_dump(*esp, *esp, PHYS_BASE - (*esp), true);
 
   return success;
 }
